@@ -1,0 +1,25 @@
+ONBOARDING POLICY — Acme Corp
+
+1. FIRST WEEK REQUIREMENTS
+Every new employee must complete the following within their first week:
+- HR documentation: offer letter acceptance, ID proof submission, bank details, and emergency contacts.
+- Mandatory security and compliance training (information security, data privacy, code of conduct).
+- IT asset collection: laptop, access card, and device configuration with IT support.
+- Introduction meetings: manager 1:1, team introduction, and mentor/buddy kickoff.
+
+2. ONBOARDING BUDDY
+- Each new hire is assigned a mentor (onboarding buddy) from their team.
+- The mentor meets the new hire at least twice a week during the first month.
+
+3. FIRST 30 DAYS
+- Complete role-specific setup (development environment, tools access, repository permissions).
+- Read the department handbook (engineering handbook, design guidelines, or HR manual as applicable).
+- Ship a first small deliverable (for engineering: a starter ticket through code review).
+
+4. ONBOARDING REVIEWS
+- A 30-day check-in is conducted by the manager.
+- A 90-day confirmation review is conducted before probation ends.
+
+5. PROBATION
+- The standard probation period is 3 months, extendable at the manager's discretion.
+- Onboarding tasks must be completed before the probation review.

@@ -1,0 +1,29 @@
+INFORMATION SECURITY POLICY — Acme Corp
+
+1. SECURITY TRAINING
+- All employees must complete mandatory information security training within the first 7 days of joining.
+- Refresher training is conducted annually; completion is tracked by the compliance team.
+
+2. DEVICE SECURITY
+- Company laptops must have disk encryption and screen lock enabled (maximum 5-minute timeout).
+- Personal devices must not be used to access company systems without MDM enrollment.
+- Lost or stolen devices must be reported to IT Security within 2 hours.
+
+3. ACCESS CONTROL
+- Access to systems follows the principle of least privilege.
+- All accounts use single sign-on (SSO) with multi-factor authentication (MFA) enabled.
+- Shared credentials are strictly prohibited. Passwords must never be stored in code repositories.
+- Access revocation happens on the employee's last working day.
+
+4. DATA HANDLING
+- Company data is classified as Public, Internal, Confidential, or Restricted.
+- Confidential and Restricted data must never be stored on personal devices or unapproved cloud storage.
+- Customer data may only be accessed when required for an assigned task.
+
+5. INCIDENT REPORTING
+- Suspected security incidents (phishing, malware, data exposure) must be reported to security@company.com immediately.
+- Employees are never penalized for reporting incidents in good faith.
+
+6. ACCEPTABLE USE
+- Company systems must not be used for illegal activity, harassment, or running unapproved software.
+- Installing software requires IT approval; license compliance is mandatory.
