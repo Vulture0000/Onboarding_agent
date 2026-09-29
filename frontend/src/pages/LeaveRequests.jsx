@@ -1,24 +1,36 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plane, Plus, Check, X } from 'lucide-react'
-import { listLeave, listBalances, listEmployees, createLeave, approveLeave, rejectLeave, errMsg } from '../services/api'
+import {
+  listLeave, listBalances, listEmployees, getTeam, createLeave, approveLeave, rejectLeave, errMsg,
+} from '../services/api'
 import { useFetch } from '../hooks/useFetch'
+import { useAuth } from '../context/AuthContext'
 import { Loading, ErrorBox, StatusBadge, Empty, PageHeader, Modal } from '../components/ui'
 
 export default function LeaveRequests() {
-  const { data: employees } = useFetch(listEmployees)
+  const { isHR } = useAuth()
+  // HR picks from the whole company; a manager picks from their own team only.
+  const { data: hrEmployees } = useFetch(listEmployees, [], { enabled: isHR })
+  const { data: team } = useFetch(getTeam, [], { enabled: !isHR })
   const { data: leaves, loading, error, refetch } = useFetch(() => listLeave(), [])
   const { data: balances, refetch: refetchBal } = useFetch(() => listBalances(), [])
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState({ employee_id: '', leave_type: 'CASUAL', start_date: '', end_date: '', reason: '' })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
-  const [agentMsgs, setAgentMsgs] = useState(null)
 
-  const empName = id => (employees || []).find(e => e.id === id)?.name || id
+  const employees = useMemo(
+    () => (isHR ? hrEmployees || [] : team || []),
+    [isHR, hrEmployees, team],
+  )
+  const empName = id =>
+    (leaves || []).find(l => l.employee_id === id)?.employee_name ||
+    employees.find(e => e.id === id)?.name ||
+    id
 
   const submit = async e => {
     e.preventDefault()
-    setBusy(true); setFormError(null); setAgentMsgs(null)
+    setBusy(true); setFormError(null)
     try {
       await createLeave(form)
       setShowNew(false)
@@ -41,8 +53,12 @@ export default function LeaveRequests() {
   return (
     <div>
       <PageHeader
-        title="Leave Requests"
-        subtitle="Processed by the Leave Agent with policy context from the RAG agent — approvals stay human"
+        title={isHR ? 'Leave Requests' : 'Leave Approvals'}
+        subtitle={
+          isHR
+            ? 'Every leave request in the company. Approvals stay human — the agents only advise.'
+            : 'Leave requests from your direct reports. You can approve or reject only your own team.'
+        }
         actions={
           <button className="btn-primary" onClick={() => { setShowNew(true); setFormError(null) }}>
             <Plus size={16} /> New Request

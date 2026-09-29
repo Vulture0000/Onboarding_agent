@@ -6,10 +6,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import agents, calendar, employees, leave, policy, resumes, tasks
+from app.api import agents, auth, calendar, employees, leave, me, policy, resumes, tasks
 from app.config import settings
 from app.db.database import SessionLocal, init_db
-from app.db.seed import seed_if_empty
+from app.db.seed import seed_if_empty, seed_users
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("onboarding")
@@ -22,6 +22,8 @@ async def lifespan(app: FastAPI):
     try:
         if seed_if_empty(db):
             logger.info("Seeded demo data.")
+        if seed_users(db):
+            logger.info("Seeded demo login accounts.")
     finally:
         db.close()
     # Warm the FAISS index in the background (needs GEMINI_API_KEY; safe no-op otherwise)
@@ -49,7 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (employees, resumes, tasks, calendar, leave, policy, agents):
+for module in (auth, me, employees, resumes, tasks, calendar, leave, policy, agents):
     app.include_router(module.router)
 
 

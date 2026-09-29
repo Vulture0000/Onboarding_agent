@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Users, ListChecks, CalendarDays, Plane, ArrowRight, Activity } from 'lucide-react'
 import { getDashboard } from '../services/api'
 import { useFetch } from '../hooks/useFetch'
+import { useAuth } from '../context/AuthContext'
 import { Loading, ErrorBox, ProgressBar, StatusBadge, StatCard, PageHeader } from '../components/ui'
 
 function greeting() {
@@ -12,6 +13,7 @@ function greeting() {
 }
 
 export default function Dashboard() {
+  const { user, isHR } = useAuth()
   const { data, loading, error, refetch } = useFetch(getDashboard)
 
   if (loading) return <Loading />
@@ -21,8 +23,12 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader
-        title={`${greeting()}, HR Admin`}
-        subtitle="Employee onboarding overview — orchestrated by LangGraph agents"
+        title={`${greeting()}, ${user?.name?.split(' ')[0] || ''}`}
+        subtitle={
+          isHR
+            ? 'Company-wide onboarding overview — orchestrated by LangGraph agents'
+            : 'Your team’s onboarding overview — you see only your direct reports'
+        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">

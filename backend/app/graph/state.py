@@ -27,6 +27,7 @@ class OnboardingState(TypedDict, total=False):
     leave_status: str            # PENDING | APPROVED | REJECTED
     requires_human_approval: bool
     human_decision: str          # approve | reject (set on resume)
+    human_decided_by: str        # display name of the approver who made the decision
 
     # Policy / RAG
     policy_question: str

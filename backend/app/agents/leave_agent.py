@@ -179,14 +179,16 @@ def finalize_leave_node(state: OnboardingState) -> dict:
     db = SessionLocal()
     try:
         leave_id = (state.get("result") or {}).get("leave_request_id")
-        decision = (state.get("human_decision") or "").lower()
+        decision = str(state.get("human_decision") or "").lower()
+        decided_by = state.get("human_decided_by") or "HR Admin"
+
         if not leave_id or decision not in ("approve", "reject"):
             return {"current_agent": "finalize_leave"}
 
-        lr = crud.decide_leave_request(db, leave_id, approve=(decision == "approve"))
+        lr = crud.decide_leave_request(db, leave_id, approve=(decision == "approve"), decided_by=decided_by)
         if lr:
             crud.log_agent(db, "LeaveAgent", "leave_decision_applied", employee_id=lr.employee_id,
-                           detail=f"Request #{lr.id} marked {lr.status.value} by human approver.")
+                           detail=f"Request #{lr.id} marked {lr.status.value} by {decided_by}.")
             messages = list(state.get("messages") or [])
             messages.append({
                 "role": "assistant", "agent": "LeaveAgent",

@@ -86,8 +86,13 @@ def human_approval_node(state: OnboardingState) -> dict:
         "leave_request": state.get("leave_request"),
         "reason": "Manager approval required per leave policy.",
     })
-    decision = (payload or {}).get("decision", "reject")
-    return {"human_decision": decision, "current_agent": "human_approval"}
+    payload = payload or {}
+    decision = payload.get("decision", "reject")
+    return {
+        "human_decision": decision,
+        "human_decided_by": payload.get("decided_by") or "Human Approver",
+        "current_agent": "human_approval",
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -178,11 +183,14 @@ def run_workflow(initial_state: dict, thread_id: str) -> dict:
     return summarize(final, thread_id)
 
 
-def resume_workflow(thread_id: str, decision: str) -> dict:
+def resume_workflow(thread_id: str, decision: str, decided_by: str | None = None) -> dict:
     """Resume an interrupted leave flow with the human decision."""
     graph = get_graph()
     config = {"configurable": {"thread_id": thread_id}}
-    final = graph.invoke(Command(resume={"decision": decision}), config=config)
+    payload = {"decision": decision} if not decided_by else {
+        "decision": decision, "decided_by": decided_by
+    }
+    final = graph.invoke(Command(resume=payload), config=config)
     return summarize(final, thread_id)
 
 

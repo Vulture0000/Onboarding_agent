@@ -5,10 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import assert_can_decide_leave, assert_can_view_employee, get_current_user
 from app.api.schemas import BalanceOut, LeaveCreate, LeaveOut
 from app.db import crud
 from app.db.database import get_db
-from app.db.models import LeaveStatus
+from app.db.models import LeaveStatus, User
 from app.graph import workflow
 
 router = APIRouter(prefix="/api/leave", tags=["leave"])
@@ -24,14 +25,15 @@ def _leave_out(l) -> dict:
 
 @router.get("", response_model=list[LeaveOut])
 def list_leave(employee_id: str | None = None, status: str | None = None,
-               db: Session = Depends(get_db)):
-    requests = crud.list_leave_requests(db, employee_id=employee_id, status=status)
+               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    requests = crud.list_leave_requests(db, employee_id=employee_id, status=status, user=user)
     return [_leave_out(l) for l in requests]
 
 
 @router.get("/balances", response_model=list[BalanceOut])
-def list_balances(employee_id: str | None = None, db: Session = Depends(get_db)):
-    balances = crud.list_balances(db, employee_id=employee_id)
+def list_balances(employee_id: str | None = None, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    balances = crud.list_balances(db, employee_id=employee_id, user=user)
     return [
         {"id": b.id, "employee_id": b.employee_id, "leave_type": b.leave_type.value,
          "total_days": b.total_days, "used_days": b.used_days,
@@ -40,22 +42,23 @@ def list_balances(employee_id: str | None = None, db: Session = Depends(get_db))
     ]
 
 
-@router.post("", response_model=LeaveOut, status_code=201)
-def create_leave(payload: LeaveCreate, db: Session = Depends(get_db)):
-    """Run the leave workflow: LeaveAgent -> PolicyAgent -> (HumanApproval)."""
-    emp = crud.get_employee(db, payload.employee_id)
+def create_leave_for_employee(
+    db: Session, employee_id: str, payload: LeaveCreate, requested_by: str | None = None
+) -> dict:
+    """Run the leave workflow for one employee: LeaveAgent -> PolicyAgent -> (HumanApproval)."""
+    emp = crud.get_employee(db, employee_id)
     if not emp:
-        raise HTTPException(404, f"Employee {payload.employee_id} not found.")
+        raise HTTPException(404, f"Employee {employee_id} not found.")
 
     thread_id = f"leave-{uuid.uuid4().hex[:10]}"
     try:
         result = workflow.run_workflow(
             {
                 "request_type": "leave",
-                "employee_id": payload.employee_id,
+                "employee_id": employee_id,
                 "user_message": payload.reason or "",
                 "leave_request": {
-                    "employee_id": payload.employee_id,
+                    "employee_id": employee_id,
                     "leave_type": payload.leave_type,
                     "start_date": payload.start_date.isoformat(),
                     "end_date": payload.end_date.isoformat(),
@@ -67,7 +70,7 @@ def create_leave(payload: LeaveCreate, db: Session = Depends(get_db)):
             thread_id=thread_id,
         )
     except Exception as exc:  # noqa: BLE001
-        crud.log_agent(db, "Supervisor", "workflow_error", employee_id=payload.employee_id,
+        crud.log_agent(db, "Supervisor", "workflow_error", employee_id=employee_id,
                        status="error", detail=str(exc))
         raise HTTPException(500, "Leave workflow failed. Check agent activity for details.") from exc
 
@@ -82,22 +85,36 @@ def create_leave(payload: LeaveCreate, db: Session = Depends(get_db)):
         lr.thread_id = thread_id
         db.commit()
         db.refresh(lr)
+    if requested_by:
+        crud.log_agent(db, "API", "leave_requested", employee_id=employee_id,
+                       detail=f"Leave requested by {requested_by}.")
     return _leave_out(lr)
 
 
-def _decide(leave_id: int, approve: bool, db: Session) -> dict:
+@router.post("", response_model=LeaveOut, status_code=201)
+def create_leave(payload: LeaveCreate, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    """Employees may only file for themselves; managers/HR can file for anyone they can see."""
+    assert_can_view_employee(db, user, payload.employee_id)
+    return create_leave_for_employee(db, payload.employee_id, payload, requested_by=user.name)
+
+
+def _decide(leave_id: int, approve: bool, db: Session, decider: User) -> dict:
     lr = crud.get_leave_request(db, leave_id)
     if not lr:
         raise HTTPException(404, f"Leave request {leave_id} not found.")
     if lr.status != LeaveStatus.PENDING:
         raise HTTPException(409, f"Leave request is already {lr.status.value}.")
+    # Manager may only decide for their own reports; HR may decide for anyone.
+    assert_can_decide_leave(db, decider, lr.employee_id)
 
     decision = "approve" if approve else "reject"
+    decider_label = f"{decider.name} ({decider.role.value})"
     resumed = False
     # Preferred path: resume the interrupted LangGraph thread (human-in-the-loop)
     if lr.thread_id and workflow.thread_is_interrupted(lr.thread_id):
         try:
-            workflow.resume_workflow(lr.thread_id, decision)
+            workflow.resume_workflow(lr.thread_id, decision, decided_by=decider_label)
             resumed = True
         except Exception as exc:  # noqa: BLE001
             crud.log_agent(db, "Supervisor", "resume_failed", employee_id=lr.employee_id,
@@ -105,21 +122,27 @@ def _decide(leave_id: int, approve: bool, db: Session) -> dict:
 
     # Fallback (or if the graph never interrupted): deterministic DB update
     if not resumed:
-        lr = crud.decide_leave_request(db, leave_id, approve=approve)
+        lr = crud.decide_leave_request(db, leave_id, approve=approve, decided_by=decider_label)
         if not lr:
             raise HTTPException(409, "Could not apply decision (request is no longer pending).")
         crud.log_agent(db, "LeaveAgent", "leave_decision_applied", employee_id=lr.employee_id,
-                       detail=f"Request #{lr.id} marked {lr.status.value} by HR Admin (fallback path).")
+                       detail=f"Request #{lr.id} marked {lr.status.value} by {decider_label} (fallback path).")
 
     db.refresh(lr)
     return _leave_out(lr)
 
 
 @router.post("/{leave_id}/approve", response_model=LeaveOut)
-def approve_leave(leave_id: int, db: Session = Depends(get_db)):
-    return _decide(leave_id, True, db)
+def approve_leave(leave_id: int, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    if user.role.value == "EMPLOYEE":
+        raise HTTPException(403, "Employees cannot approve leave requests.")
+    return _decide(leave_id, True, db, user)
 
 
 @router.post("/{leave_id}/reject", response_model=LeaveOut)
-def reject_leave(leave_id: int, db: Session = Depends(get_db)):
-    return _decide(leave_id, False, db)
+def reject_leave(leave_id: int, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    if user.role.value == "EMPLOYEE":
+        raise HTTPException(403, "Employees cannot reject leave requests.")
+    return _decide(leave_id, False, db, user)

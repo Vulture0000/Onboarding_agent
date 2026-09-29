@@ -1,14 +1,15 @@
 """Resume upload endpoint — triggers the full LangGraph resume workflow."""
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_hr
 from app.api.schemas import AgentRunResponse, ResumeOut
 from app.config import settings
 from app.db import crud
 from app.db.database import get_db
+from app.db.models import User
 from app.graph import workflow
 from app.tools.resume_tools import extract_text_from_pdf
 
@@ -16,12 +17,13 @@ router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
 
 @router.get("", response_model=list[ResumeOut])
-def list_resumes(db: Session = Depends(get_db)):
+def list_resumes(db: Session = Depends(get_db), user: User = Depends(require_hr)):
     return crud.list_resumes(db)
 
 
 @router.post("/upload", response_model=AgentRunResponse)
-async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db),
+                        user: User = Depends(require_hr)):
     """Upload a PDF resume and run: Resume -> Onboarding -> Calendar agents."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF resumes are supported.")

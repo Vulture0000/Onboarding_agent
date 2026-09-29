@@ -46,6 +46,33 @@ class LeaveType(str, enum.Enum):
     EARNED = "EARNED"
 
 
+class Role(str, enum.Enum):
+    """Access-control role. Distinct from Employee.role, which is a job title."""
+
+    HR = "HR"
+    MANAGER = "MANAGER"
+    EMPLOYEE = "EMPLOYEE"
+
+
+class User(Base):
+    """Login account. HR users have no employee_id; the other roles always do."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(160), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[Role] = mapped_column(
+        Enum(Role, values_callable=lambda e: [m.value for m in e]), default=Role.EMPLOYEE
+    )
+    employee_id: Mapped[str | None] = mapped_column(ForeignKey("employees.id"), index=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    employee: Mapped["Employee | None"] = relationship()
+
+
 class Employee(Base):
     __tablename__ = "employees"
 
@@ -56,6 +83,7 @@ class Employee(Base):
     role: Mapped[str | None] = mapped_column(String(120))
     department: Mapped[str | None] = mapped_column(String(120))
     manager: Mapped[str | None] = mapped_column(String(120))
+    manager_id: Mapped[str | None] = mapped_column(ForeignKey("employees.id"), index=True)
     mentor: Mapped[str | None] = mapped_column(String(120))
     experience: Mapped[str | None] = mapped_column(String(64))
     education: Mapped[str | None] = mapped_column(Text)
@@ -148,7 +176,7 @@ class LeaveRequest(Base):
     requires_approval: Mapped[bool] = mapped_column(default=True)
     policy_context: Mapped[list | None] = mapped_column(JSON)
     agent_notes: Mapped[str | None] = mapped_column(Text)
-    decided_by: Mapped[str | None] = mapped_column(String(64))
+    decided_by: Mapped[str | None] = mapped_column(String(128))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime)
     thread_id: Mapped[str | None] = mapped_column(String(64))  # LangGraph checkpoint thread
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

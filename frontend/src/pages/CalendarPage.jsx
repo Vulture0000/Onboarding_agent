@@ -1,17 +1,26 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CalendarPlus, CalendarDays, XCircle, CalendarClock } from 'lucide-react'
-import { listMeetings, listEmployees, createMeeting, updateMeeting, errMsg } from '../services/api'
+import { listMeetings, listEmployees, getTeam, createMeeting, updateMeeting, errMsg } from '../services/api'
 import { useFetch } from '../hooks/useFetch'
+import { useAuth } from '../context/AuthContext'
 import { Loading, ErrorBox, StatusBadge, Empty, PageHeader, Modal } from '../components/ui'
 
 export default function CalendarPage() {
-  const { data: employees } = useFetch(listEmployees)
+  const { isHR } = useAuth()
+  // HR picks any employee; a manager picks from their own team.
+  const { data: hrEmployees } = useFetch(listEmployees, [], { enabled: isHR })
+  const { data: team } = useFetch(getTeam, [], { enabled: !isHR })
   const { data: meetings, loading, error, refetch } = useFetch(() => listMeetings(), [])
   const [showNew, setShowNew] = useState(false)
   const [resched, setResched] = useState(null)
   const [form, setForm] = useState({ employee_id: '', title: '', date: '', start_time: '', end_time: '' })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
+
+  const employees = useMemo(
+    () => (isHR ? hrEmployees || [] : team || []),
+    [isHR, hrEmployees, team],
+  )
 
   const submitNew = async e => {
     e.preventDefault()

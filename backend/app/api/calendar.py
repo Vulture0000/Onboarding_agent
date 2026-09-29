@@ -2,10 +2,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import assert_can_view_employee, get_current_user, require_manager
 from app.api.schemas import MeetingCreate, MeetingOut, MeetingUpdate
 from app.db import crud
 from app.db.database import get_db
-from app.db.models import MeetingStatus
+from app.db.models import MeetingStatus, User
 from app.tools import calendar_tools
 
 router = APIRouter(prefix="/api/meetings", tags=["calendar"])
@@ -20,13 +21,16 @@ def _meeting_out(m) -> dict:
 
 @router.get("", response_model=list[MeetingOut])
 def list_meetings(employee_id: str | None = None, upcoming: bool = False,
-                  db: Session = Depends(get_db)):
-    meetings = crud.list_meetings(db, employee_id=employee_id, upcoming_only=upcoming)
+                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    meetings = crud.list_meetings(db, employee_id=employee_id, upcoming_only=upcoming, user=user)
     return [_meeting_out(m) for m in meetings]
 
 
 @router.post("", response_model=MeetingOut, status_code=201)
-def create_meeting(payload: MeetingCreate, db: Session = Depends(get_db)):
+def create_meeting(payload: MeetingCreate, db: Session = Depends(get_db),
+                   user: User = Depends(require_manager)):
+    """Scheduling is a manager/HR action, scoped to employees they can see."""
+    assert_can_view_employee(db, user, payload.employee_id)
     emp = crud.get_employee(db, payload.employee_id)
     if not emp:
         raise HTTPException(404, f"Employee {payload.employee_id} not found.")
@@ -56,10 +60,18 @@ def create_meeting(payload: MeetingCreate, db: Session = Depends(get_db)):
 
 
 @router.patch("/{meeting_id}", response_model=MeetingOut)
-def update_meeting(meeting_id: int, payload: MeetingUpdate, db: Session = Depends(get_db)):
+def update_meeting(meeting_id: int, payload: MeetingUpdate, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
     meeting = crud.get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(404, f"Meeting {meeting_id} not found.")
+    # Employees may only mark their own meetings complete; reschedule/cancel is manager/HR.
+    is_owner = user.role.value == "EMPLOYEE" and meeting.employee_id == user.employee_id
+    if user.role.value == "EMPLOYEE":
+        if not is_owner:
+            raise HTTPException(403, "You do not have access to this meeting.")
+        if payload.status != "COMPLETED" or payload.date or payload.start_time:
+            raise HTTPException(403, "Employees may only mark their own meetings as completed.")
 
     if payload.status == "CANCELLED":
         updated, note = calendar_tools.cancel_meeting(db, meeting_id)
@@ -74,5 +86,6 @@ def update_meeting(meeting_id: int, payload: MeetingUpdate, db: Session = Depend
         updated = crud.update_meeting(db, meeting_id, status=payload.status)
         note = f"Meeting #{meeting_id} status set to {payload.status}."
 
-    crud.log_agent(db, "CalendarAgent", "meeting_updated", employee_id=meeting.employee_id, detail=note)
+    crud.log_agent(db, "CalendarAgent", "meeting_updated", employee_id=meeting.employee_id,
+                   detail=f"{note} (by {user.name})")
     return _meeting_out(updated)

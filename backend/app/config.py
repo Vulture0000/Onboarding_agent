@@ -16,6 +16,13 @@ class Settings:
         "GEMINI_EMBEDDING_MODEL", "models/text-embedding-004"
     )
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/onboarding.db")
+    jwt_secret: str = os.getenv(
+        "JWT_SECRET",
+        "dev-only-insecure-jwt-secret-change-me-in-production",
+    )
+    jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
+    jwt_expire_minutes: int = int(os.getenv("JWT_EXPIRE_MINUTES", "720"))
+    demo_password: str = os.getenv("DEMO_PASSWORD", "Demo@1234")
 
     data_dir: Path = BACKEND_DIR / "data"
     policies_dir: Path = BACKEND_DIR / "data" / "policies"

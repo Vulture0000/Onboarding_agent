@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-/** Fetch data with loading/error state and manual refetch. */
-export function useFetch(fetcher, deps = []) {
+/**
+ * Fetch data with loading/error state and manual refetch.
+ * `options.enabled = false` skips the request entirely (use for role-gated calls).
+ */
+export function useFetch(fetcher, deps = [], options = {}) {
+  const { enabled = true } = options
   const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(enabled)
   const [error, setError] = useState(null)
   const fetcherRef = useRef(fetcher)
   fetcherRef.current = fetcher
 
   const load = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const result = await fetcherRef.current()
@@ -19,7 +27,7 @@ export function useFetch(fetcher, deps = []) {
     } finally {
       setLoading(false)
     }
-  }, deps)
+  }, [enabled, ...deps])
 
   useEffect(() => { load() }, [load])
   return { data, loading, error, refetch: load, setData }

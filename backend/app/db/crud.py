@@ -15,7 +15,9 @@ from app.db.models import (
     MeetingStatus,
     OnboardingTask,
     Resume,
+    Role,
     TaskStatus,
+    User,
 )
 
 # --------------------------------------------------------------------------- #
@@ -43,17 +45,88 @@ def log_agent(
     return entry
 
 
-def list_agent_logs(db: Session, limit: int = 100) -> list[AgentLog]:
-    return list(
-        db.scalars(
-            select(AgentLog).order_by(AgentLog.timestamp.desc(), AgentLog.id.desc()).limit(limit)
-        )
+def list_agent_logs(db: Session, limit: int = 100, user: User | None = None) -> list[AgentLog]:
+    q = select(AgentLog).order_by(AgentLog.timestamp.desc(), AgentLog.id.desc())
+    if user is not None:
+        q = apply_scope(q, AgentLog.employee_id, user, db)
+    return list(db.scalars(q.limit(limit)))
+
+
+# --------------------------------------------------------------------------- #
+# Users / auth
+# --------------------------------------------------------------------------- #
+
+def get_user(db: Session, user_id: int) -> User | None:
+    return db.get(User, user_id)
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    return db.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
+
+
+def create_user(
+    db: Session, email: str, name: str, hashed_password: str, role: Role,
+    employee_id: str | None = None,
+) -> User:
+    user = User(
+        email=email.strip().lower(),
+        name=name,
+        hashed_password=hashed_password,
+        role=role,
+        employee_id=employee_id,
     )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def count_users(db: Session) -> int:
+    return db.scalar(select(func.count()).select_from(User)) or 0
 
 
 # --------------------------------------------------------------------------- #
 # Employees
 # --------------------------------------------------------------------------- #
+
+def team_employee_ids(db: Session, manager_id: str) -> list[str]:
+    """Employee ids reporting to this manager."""
+    return list(
+        db.scalars(
+            select(Employee.id)
+            .where(Employee.manager_id == manager_id)
+            .order_by(Employee.id)
+        )
+    )
+
+
+def visible_employee_ids(db: Session, user: User) -> list[str] | None:
+    """Employee ids a user may read.
+
+    Returns None for "unrestricted" (HR sees everything). MANAGER sees their team,
+    EMPLOYEE sees only themselves.
+    """
+    if user.role == Role.HR:
+        return None
+    if user.role == Role.MANAGER and user.employee_id:
+        return team_employee_ids(db, user.employee_id)
+    return [user.employee_id] if user.employee_id else []
+
+
+def can_access_employee(db: Session, user: User, employee_id: str) -> bool:
+    visible = visible_employee_ids(db, user)
+    return visible is None or employee_id in visible
+
+
+def apply_scope(stmt, column, user: User, db: Session):
+    """Restrict a select statement to the employees the user may see."""
+    visible = visible_employee_ids(db, user)
+    if visible is None:
+        return stmt
+    if not visible:
+        return stmt.where(column.is_(None))  # matches nothing, including NULLs
+    return stmt.where(column.in_(visible))
+
 
 def next_employee_id(db: Session) -> str:
     count = db.scalar(select(func.count()).select_from(Employee)) or 0
@@ -74,6 +147,7 @@ def create_employee(db: Session, data: dict) -> Employee:
         role=data.get("role"),
         department=data.get("department"),
         manager=data.get("manager"),
+        manager_id=data.get("manager_id"),
         mentor=data.get("mentor"),
         experience=data.get("experience"),
         education=data.get("education"),
@@ -95,15 +169,27 @@ def get_employee_by_email(db: Session, email: str) -> Employee | None:
     return db.scalar(select(Employee).where(func.lower(Employee.email) == email.lower()))
 
 
-def list_employees(db: Session) -> list[Employee]:
-    return list(db.scalars(select(Employee).order_by(Employee.created_at.desc())))
+def list_employees(db: Session, user: User | None = None) -> list[Employee]:
+    q = select(Employee).order_by(Employee.created_at.desc())
+    if user is not None:
+        q = apply_scope(q, Employee.id, user, db)
+    return list(db.scalars(q))
+
+
+DEFAULT_LEAVE_TOTALS: dict[LeaveType, int] = {
+    LeaveType.CASUAL: 0,
+    LeaveType.SICK: 0,
+    LeaveType.EARNED: 0,
+}
 
 
 def default_leave_balances(db: Session, employee_id: str) -> list[LeaveBalance]:
-    """Create standard annual leave balances for a new employee."""
-    defaults = {LeaveType.CASUAL: 8, LeaveType.SICK: 10, LeaveType.EARNED: 12}
+    """Create annual leave balances for a new employee.
+
+    All seeded users start at zero balance (see DEFAULT_LEAVE_TOTALS).
+    """
     balances = []
-    for ltype, total in defaults.items():
+    for ltype, total in DEFAULT_LEAVE_TOTALS.items():
         b = LeaveBalance(
             employee_id=employee_id,
             leave_type=ltype,
@@ -154,10 +240,17 @@ def bulk_create_tasks(db: Session, employee_id: str, tasks: list[dict]) -> list[
     return objs
 
 
-def list_tasks(db: Session, employee_id: str | None = None, status: str | None = None) -> list[OnboardingTask]:
+def list_tasks(
+    db: Session,
+    employee_id: str | None = None,
+    status: str | None = None,
+    user: User | None = None,
+) -> list[OnboardingTask]:
     q = select(OnboardingTask).order_by(OnboardingTask.due_date.asc(), OnboardingTask.id.asc())
     if employee_id:
         q = q.where(OnboardingTask.employee_id == employee_id)
+    if user is not None:
+        q = apply_scope(q, OnboardingTask.employee_id, user, db)
     if status:
         q = q.where(OnboardingTask.status == TaskStatus(status))
     return list(db.scalars(q))
@@ -224,11 +317,16 @@ def bulk_create_meetings(db: Session, meetings: list[dict]) -> list[Meeting]:
 
 
 def list_meetings(
-    db: Session, employee_id: str | None = None, upcoming_only: bool = False
+    db: Session,
+    employee_id: str | None = None,
+    upcoming_only: bool = False,
+    user: User | None = None,
 ) -> list[Meeting]:
     q = select(Meeting).order_by(Meeting.date.asc(), Meeting.start_time.asc())
     if employee_id:
         q = q.where(Meeting.employee_id == employee_id)
+    if user is not None:
+        q = apply_scope(q, Meeting.employee_id, user, db)
     if upcoming_only:
         q = q.where(Meeting.date >= date.today(), Meeting.status == MeetingStatus.SCHEDULED)
     return list(db.scalars(q))
@@ -276,10 +374,12 @@ def get_balance(db: Session, employee_id: str, leave_type: LeaveType) -> LeaveBa
     )
 
 
-def list_balances(db: Session, employee_id: str | None = None) -> list[LeaveBalance]:
+def list_balances(db: Session, employee_id: str | None = None, user: User | None = None) -> list[LeaveBalance]:
     q = select(LeaveBalance)
     if employee_id:
         q = q.where(LeaveBalance.employee_id == employee_id)
+    if user is not None:
+        q = apply_scope(q, LeaveBalance.employee_id, user, db)
     return list(db.scalars(q))
 
 
@@ -295,10 +395,17 @@ def get_leave_request(db: Session, leave_id: int) -> LeaveRequest | None:
     return db.get(LeaveRequest, leave_id)
 
 
-def list_leave_requests(db: Session, employee_id: str | None = None, status: str | None = None) -> list[LeaveRequest]:
+def list_leave_requests(
+    db: Session,
+    employee_id: str | None = None,
+    status: str | None = None,
+    user: User | None = None,
+) -> list[LeaveRequest]:
     q = select(LeaveRequest).order_by(LeaveRequest.created_at.desc())
     if employee_id:
         q = q.where(LeaveRequest.employee_id == employee_id)
+    if user is not None:
+        q = apply_scope(q, LeaveRequest.employee_id, user, db)
     if status:
         q = q.where(LeaveRequest.status == LeaveStatus(status))
     return list(db.scalars(q))
@@ -327,30 +434,34 @@ def decide_leave_request(
 # Dashboard
 # --------------------------------------------------------------------------- #
 
-def dashboard_stats(db: Session) -> dict:
-    employees = db.scalar(select(func.count()).select_from(Employee)) or 0
-    onboarding = db.scalar(
-        select(func.count()).select_from(Employee).where(Employee.status == "ONBOARDING")
-    ) or 0
-    upcoming_meetings = db.scalar(
-        select(func.count())
-        .select_from(Meeting)
-        .where(Meeting.date >= date.today(), Meeting.status == MeetingStatus.SCHEDULED)
-    ) or 0
-    pending_leave = db.scalar(
-        select(func.count())
-        .select_from(LeaveRequest)
-        .where(LeaveRequest.status == LeaveStatus.PENDING)
-    ) or 0
-    tasks_done = db.scalar(
-        select(func.count()).select_from(OnboardingTask).where(OnboardingTask.status == TaskStatus.COMPLETED)
-    ) or 0
-    tasks_total = db.scalar(select(func.count()).select_from(OnboardingTask)) or 0
+def dashboard_stats(db: Session, user: User | None = None) -> dict:
+    """Org-wide aggregates, or team-wide ones when a user scope is supplied."""
+    emp_q = select(func.count()).select_from(Employee)
+    onboarding_q = select(func.count()).select_from(Employee).where(Employee.status == "ONBOARDING")
+    tasks_done_q = select(func.count()).select_from(OnboardingTask).where(
+        OnboardingTask.status == TaskStatus.COMPLETED
+    )
+    tasks_total_q = select(func.count()).select_from(OnboardingTask)
+    meetings_q = select(func.count()).select_from(Meeting).where(
+        Meeting.date >= date.today(), Meeting.status == MeetingStatus.SCHEDULED
+    )
+    pending_q = select(func.count()).select_from(LeaveRequest).where(
+        LeaveRequest.status == LeaveStatus.PENDING
+    )
+
+    if user is not None:
+        emp_q = apply_scope(emp_q, Employee.id, user, db)
+        onboarding_q = apply_scope(onboarding_q, Employee.id, user, db)
+        tasks_done_q = apply_scope(tasks_done_q, OnboardingTask.employee_id, user, db)
+        tasks_total_q = apply_scope(tasks_total_q, OnboardingTask.employee_id, user, db)
+        meetings_q = apply_scope(meetings_q, Meeting.employee_id, user, db)
+        pending_q = apply_scope(pending_q, LeaveRequest.employee_id, user, db)
+
     return {
-        "employees": employees,
-        "onboarding": onboarding,
-        "upcoming_meetings": upcoming_meetings,
-        "pending_leave": pending_leave,
-        "tasks_completed": tasks_done,
-        "tasks_total": tasks_total,
+        "employees": db.scalar(emp_q) or 0,
+        "onboarding": db.scalar(onboarding_q) or 0,
+        "upcoming_meetings": db.scalar(meetings_q) or 0,
+        "pending_leave": db.scalar(pending_q) or 0,
+        "tasks_completed": db.scalar(tasks_done_q) or 0,
+        "tasks_total": db.scalar(tasks_total_q) or 0,
     }
