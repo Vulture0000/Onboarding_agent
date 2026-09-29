@@ -1,4 +1,4 @@
-import { Cpu, Database, BookOpen, Sparkles, AlertTriangle } from 'lucide-react'
+import { Cpu, Database, Sparkles, AlertTriangle } from 'lucide-react'
 import { getAgentStatus } from '../services/api'
 import { useFetch } from '../hooks/useFetch'
 import { Loading, ErrorBox, PageHeader } from '../components/ui'

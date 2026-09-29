@@ -60,8 +60,6 @@ export default function Employees() {
     finally { setSaving(false) }
   }
 
-  const effectiveRole = form.login_role || preview?.role
-
   const filtered = (data || []).filter(e =>
     [e.name, e.email, e.role, e.department, e.id].some(v => (v || '').toLowerCase().includes(q.toLowerCase()))
   )

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from 'lucide-react'
+import { Activity, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { getAgentLogs } from '../services/api'
 import { usePoll } from '../hooks/useFetch'
 import { PageHeader, Empty } from '../components/ui'

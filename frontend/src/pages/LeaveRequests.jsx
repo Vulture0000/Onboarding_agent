@@ -18,6 +18,7 @@ export default function LeaveRequests() {
   const [form, setForm] = useState({ employee_id: '', leave_type: 'CASUAL', start_date: '', end_date: '', reason: '' })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
+  const [agentMsg, setAgentMsg] = useState(null)
 
   const employees = useMemo(
     () => (isHR ? hrEmployees || [] : team || []),
@@ -32,8 +33,8 @@ export default function LeaveRequests() {
     e.preventDefault()
     setBusy(true); setFormError(null)
     try {
-      await createLeave(form)
-      setShowNew(false)
+      const created = await createLeave(form)
+      setAgentMsg(created.agent_notes || null)
       setForm({ employee_id: '', leave_type: 'CASUAL', start_date: '', end_date: '', reason: '' })
       refetch(); refetchBal()
     } catch (err) { setFormError(errMsg(err)) }
@@ -60,7 +61,7 @@ export default function LeaveRequests() {
             : 'Leave requests from your direct reports. You can approve or reject only your own team.'
         }
         actions={
-          <button className="btn-primary" onClick={() => { setShowNew(true); setFormError(null) }}>
+          <button className="btn-primary" onClick={() => { setShowNew(true); setFormError(null); setAgentMsg(null) }}>
             <Plus size={16} /> New Request
           </button>
         }
@@ -169,7 +170,7 @@ export default function LeaveRequests() {
       <Modal open={showNew} onClose={() => setShowNew(false)} title="New Leave Request">
         <form onSubmit={submit} className="space-y-3">
           {formError && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg p-2">{formError}</div>}
-          {agentMsgs && <div className="text-sm text-gray-300 bg-panel border border-edge rounded-lg p-2">{agentMsgs}</div>}
+          {agentMsg && <div className="text-sm text-gray-300 bg-panel border border-edge rounded-lg p-2">{agentMsg}</div>}
           <div><label className="label">Employee *</label>
             <select required className="input" value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })}>
               <option value="">Select employee…</option>

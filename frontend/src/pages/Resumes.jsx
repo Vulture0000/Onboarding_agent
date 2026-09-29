@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { UploadCloud, FileText, CheckCircle2, Loader2, XCircle } from 'lucide-react'
+import { UploadCloud, FileText, CheckCircle2, Loader2 } from 'lucide-react'
 import { listResumes, uploadResume, errMsg } from '../services/api'
 import { useFetch } from '../hooks/useFetch'
 import { ErrorBox, PageHeader, StatusBadge } from '../components/ui'

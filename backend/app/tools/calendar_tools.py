@@ -6,7 +6,7 @@ provider class isolates the "external calendar" behavior.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 
 from sqlalchemy.orm import Session
 

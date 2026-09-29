@@ -21,7 +21,6 @@ def resume_agent_node(state: OnboardingState) -> dict:
     try:
         resume_data = dict(state.get("resume_data") or {})
         resume_id = state.get("resume_file_id")
-        resume_text = None
         extraction_method = resume_data.pop("_method", "llm") if resume_data else "llm"
 
         # If raw text was supplied without structured data, extract now
@@ -32,7 +31,6 @@ def resume_agent_node(state: OnboardingState) -> dict:
                 if r and r.extracted_text:
                     text = r.extracted_text
             resume_data, extraction_method = extract_structured_info(text)
-            resume_text = text
 
         if not resume_data.get("name"):
             crud.log_agent(db, "ResumeAgent", "extraction_failed",

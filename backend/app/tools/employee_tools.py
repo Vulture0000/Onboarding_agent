@@ -1,7 +1,7 @@
 """Employee tools: deterministic profile creation used by the Resume Agent."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
 from sqlalchemy.orm import Session
 

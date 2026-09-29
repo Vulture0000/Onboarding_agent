@@ -7,7 +7,6 @@ back to a keyword search over raw text).
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from app.config import settings
 
