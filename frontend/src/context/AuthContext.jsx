@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { fetchMe, login as loginRequest, setToken, setUnauthorizedHandler, getToken } from '../services/api'
+import { fetchMe, login as loginRequest, signup as signupRequest, setToken, setUnauthorizedHandler, getToken } from '../services/api'
 
 const AuthContext = createContext(null)
 
@@ -47,11 +47,20 @@ export function AuthProvider({ children }) {
     return data.user
   }, [])
 
+  // Signup returns a token too, so a new user lands straight on their dashboard.
+  const signUp = useCallback(async (payload) => {
+    const data = await signupRequest(payload)
+    setToken(data.access_token)
+    setUser(data.user)
+    return data.user
+  }, [])
+
   const value = useMemo(
     () => ({
       user,
       loading,
       signIn,
+      signUp,
       signOut,
       role: user?.role || null,
       isHR: user?.role === 'HR',
@@ -59,7 +68,7 @@ export function AuthProvider({ children }) {
       isEmployee: user?.role === 'EMPLOYEE',
       can: (...roles) => !!user && roles.includes(user.role),
     }),
-    [user, loading, signIn, signOut],
+    [user, loading, signIn, signUp, signOut],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

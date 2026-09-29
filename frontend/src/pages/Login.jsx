@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
-import { Bot, LogIn, Loader2 } from 'lucide-react'
+import { Navigate, Link, useLocation } from 'react-router-dom'
+import { Bot, LogIn, Loader2, UserPlus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { errMsg } from '../services/api'
 
@@ -113,6 +113,12 @@ export default function Login() {
           <p className="text-[11px] text-gray-500 mt-4">
             Demo password for every account: <code className="text-gray-400">Demo@1234</code>
           </p>
+          <Link
+            to="/signup"
+            className="mt-3 flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-200"
+          >
+            <UserPlus size={13} /> New here? Create an account
+          </Link>
         </div>
 
         <div className="space-y-3">

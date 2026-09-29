@@ -4,6 +4,7 @@ import { RequireAuth, RequireRole } from './components/guards.jsx'
 import { useAuth } from './context/AuthContext'
 
 import Login from './pages/Login.jsx'
+import Signup from './pages/Signup.jsx'
 import MyHome from './pages/MyHome.jsx'
 import MyTasks from './pages/MyTasks.jsx'
 import MyLeave from './pages/MyLeave.jsx'
@@ -35,6 +36,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         {/* Self-service — every role */}

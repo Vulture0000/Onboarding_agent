@@ -42,6 +42,20 @@ class LoginResponse(BaseModel):
     user: UserOut
 
 
+class SignupRequest(BaseModel):
+    """Public self-registration.
+
+    There is deliberately no `role` or `login_role` field. A self-registered
+    account is always EMPLOYEE; MANAGER and HR access is granted afterwards by
+    an existing privileged user. Accepting a role here would let anyone register
+    as HR just by choosing an email address.
+    """
+
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(pattern=r"^[\w.+-]+@[\w-]+\.[\w.]+$", max_length=160)
+    password: str = Field(min_length=8, max_length=128)
+
+
 # ----------------------------- Employees ---------------------------------- #
 
 class EmployeeCreate(BaseModel):

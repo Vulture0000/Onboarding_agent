@@ -40,6 +40,7 @@ export function errMsg(e) {
 // Auth
 export const login = (email, password) =>
   api.post('/auth/login', { email, password }).then(r => r.data)
+export const signup = data => api.post('/auth/signup', data).then(r => r.data)
 export const fetchMe = () => api.get('/auth/me').then(r => r.data)
 export const fetchDemoAccounts = () => api.post('/auth/demo-accounts').then(r => r.data)
 
