@@ -176,20 +176,45 @@ def list_employees(db: Session, user: User | None = None) -> list[Employee]:
     return list(db.scalars(q))
 
 
-DEFAULT_LEAVE_TOTALS: dict[LeaveType, int] = {
-    LeaveType.CASUAL: 0,
-    LeaveType.SICK: 0,
-    LeaveType.EARNED: 0,
+# Entitlements per calendar year, taken from data/policies/leave_policy.txt
+# ("LEAVE ENTITLEMENTS"). These must stay in sync with the policy document:
+# the balance check rejects any request that exceeds the available days, so a
+# zero default made every leave request fail and left the seeded data
+# contradicting the policy the system claims to enforce.
+POLICY_ENTITLEMENTS: dict[LeaveType, int] = {
+    LeaveType.CASUAL: 8,
+    LeaveType.SICK: 10,
+    LeaveType.EARNED: 12,
 }
+
+# Policy: "Employees on probation (first 3 months) may use casual and sick
+# leave only", so earned leave is withheld until probation ends.
+PROBATION_MONTHS = 3
+
+
+def _months_since(d: date | None) -> int | None:
+    if not d:
+        return None
+    today = date.today()
+    return (today.year - d.year) * 12 + (today.month - d.month)
 
 
 def default_leave_balances(db: Session, employee_id: str) -> list[LeaveBalance]:
     """Create annual leave balances for a new employee.
 
-    All seeded users start at zero balance (see DEFAULT_LEAVE_TOTALS).
+    Entitlements follow the policy document. Earned leave is withheld while the
+    employee is within their probation period.
     """
+    emp = db.get(Employee, employee_id)
+    in_probation = False
+    months = _months_since(emp.joining_date) if emp else None
+    if months is not None:
+        in_probation = months < PROBATION_MONTHS
+
     balances = []
-    for ltype, total in DEFAULT_LEAVE_TOTALS.items():
+    for ltype, total in POLICY_ENTITLEMENTS.items():
+        if ltype is LeaveType.EARNED and in_probation:
+            total = 0
         b = LeaveBalance(
             employee_id=employee_id,
             leave_type=ltype,
